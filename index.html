@@ -552,9 +552,47 @@ kbd{font-family:var(--f-body);font-weight:800;font-size:11px;padding:1px 5px;bor
   .tool{padding:5px}
   .tool svg{width:15px;height:15px}
 }
+
+/* ---------- iPhone and touch (iOS Safari, and every iPhone browser, is WebKit) ---------- */
+/* No double-tap zoom on fast taps; no text inflation when the phone turns sideways. */
+html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+/* The page column never grows past the screen: on a 320 px iPhone the title shrinks instead of pushing the buttons off. */
+.app{grid-template-columns:minmax(0,1fr)}
+/* The visible height follows Safari's toolbars (iOS 15.4+), and the hand stays clear of the home bar. */
+@supports (height:100dvh){ body{height:100dvh} }
+body{padding-top:max(8px, env(safe-area-inset-top, 0px));padding-bottom:max(10px, env(safe-area-inset-bottom, 0px))}
+.overlay{-webkit-backdrop-filter:blur(3px)}
+/* Text under 16 px makes iPhone Safari zoom the page when a field gets focus. */
+.join-row input,.lobby-opts select{font-size:16px}
+/* Card faces swap at the half-turn, so a hidden card never shows its blank front, even where a browser
+   draws back faces (Playwright's WebKit for Windows does; some older web views did too). */
+.card .face{transition:visibility 0s linear calc(var(--flip) * .5)}
+.card .front{visibility:hidden}
+.card.flipped .front{visibility:visible}
+.card.flipped .back{visibility:hidden}
+/* iOS before 16.2 has no color-mix(): plain colour edges instead of none. */
+@supports not (color:color-mix(in srgb, red 50%, blue)){
+  .front{border-color:var(--c)}
+  .hcard{box-shadow:0 8px 14px rgba(0,0,0,.45), inset 0 0 0 2px var(--c)}
+}
+/* On touch screens a tap leaves :hover on the last thing touched; lifts and tilts are for mice only.
+   Keyboard numbers mean nothing without a keyboard. */
+@media (hover:none){
+  .hcard:hover:not(:disabled):not([aria-pressed="true"]){transform:rotate(var(--rot))}
+  .die-btn:not([aria-disabled="true"]):hover .die-svg{transform:none}
+}
+@media (hover:none), (pointer:coarse){ .hcard kbd{display:none} }
+/* A phone held sideways (about 340 px tall): a wider table keeps the side players' cards off the chest and die. */
+@media (max-height: 520px) and (min-width: 561px){
+  .stage-wrap{width:min(100cqw, calc(100cqh * 2.5))}
+  .stage{aspect-ratio:2.5}
+  .app{min-height:0}
+  body{padding-top:max(4px, env(safe-area-inset-top, 0px));padding-bottom:max(4px, env(safe-area-inset-bottom, 0px))}
+}
 </style>
 </head>
 <body>
+<noscript><div style="position:fixed;inset:0;z-index:999;display:grid;place-items:center;padding:24px;background:#1a100a;color:#f5ecd8;font:600 17px/1.6 system-ui,-apple-system,sans-serif;text-align:center">This viewer cannot run the game. Open the link in Safari or Chrome to play.</div></noscript>
 
 <!-- ===== shared SVG artwork ===== -->
 <svg class="defs" aria-hidden="true" focusable="false">
@@ -2588,6 +2626,7 @@ if (typeof module !== 'undefined') module.exports = Engine;
       ? 'Share this code with up to three friends. They open the game and type it in, or open your invite link. Empty seats are played by AI.'
       : 'You are at the table. The host deals when everyone is in.';
     $('#copyLink').hidden = !hosting;
+    $('#copyLink').textContent = shareSheet() && inviteLink() ? 'Share invite link' : 'Copy invite link';
     $('#lobbySeats').innerHTML = IDS.map(id => {
       const s = G.seats[seatIdx(id)];
       const mine = id === G.me;
@@ -2604,7 +2643,13 @@ if (typeof module !== 'undefined') module.exports = Engine;
     $('#lobbyMsg').textContent = hosting ? (friends ? '' : 'Nobody has joined yet. You can still deal: AI plays the empty seats, and friends can take an AI seat later.') : 'Waiting for the host to deal…';
     $('#lobbyMsg').classList.add('ok');
   }
+  const shareSheet = () => !!navigator.share && matchMedia('(pointer: coarse)').matches;
   async function copyInvite(){
+    const url = inviteLink();
+    if (url && shareSheet()){
+      try { await navigator.share({ title:'Treasure Hunt Clash', text:'Join my Treasure Hunt Clash table: ' + Net.code, url }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
     const link = inviteLink();
     const text = link || Net.code;
     try { await navigator.clipboard.writeText(text); toast(link ? 'Invite link copied' : 'Table code copied'); }
